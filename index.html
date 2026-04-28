@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>3D Gaussian Splatting</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #fff;
+  color: #1a1a1a;
+  font-family: 'IBM Plex Mono', monospace;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── HEADER ─────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: .1em;
+  color: #8b5cf6;
+}
+.logo span { color: #1a1a1a; }
+
+.hstats { display: flex; gap: 28px; }
+.hs { display: flex; flex-direction: column; align-items: flex-end; }
+.hs-l { font-size: .48rem; color: #bbb; letter-spacing: .14em; text-transform: uppercase; }
+.hs-v { font-size: .9rem; color: #8b5cf6; font-weight: 600; }
+
+/* ── TOP: CANVASES ──────────────────────────────────────── */
+.top {
+  display: flex;
+  gap: 12px;
+  padding: 16px 28px 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.pane-label {
+  font-size: .5rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #bbb;
+  flex-shrink: 0;
+}
+.pane-label b { color: #8b5cf6; }
+
+canvas.view {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  image-rendering: pixelated;
+  border: 1px solid #eee;
+  background: #000;
+}
+
+/* ── LOSS BAR ───────────────────────────────────────────── */
+.lossbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 28px;
+  flex-shrink: 0;
+}
+.ll { font-size: .48rem; color: #bbb; letter-spacing: .1em; white-space: nowrap; }
+#lossCanvas { flex: 1; height: 28px; border: 1px solid #eee; background: #fafafa; display: block; }
+.lv { font-size: .65rem; color: #8b5cf6; font-weight: 600; min-width: 52px; text-align: right; }
+
+/* ── BOTTOM: CONTROLS ───────────────────────────────────── */
+.bottom {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  gap: 0;
+  border-top: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.panel {
+  padding: 20px 24px;
+  border-right: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.panel:last-child { border-right: none; }
+
+.panel-title {
+  font-size: .5rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: #bbb;
+}
+
+/* Buttons */
+.play {
+  padding: 12px 28px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: .1em;
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: .15s;
+  white-space: nowrap;
+}
+.play:hover { background: #7c3aed; }
+.play.running { background: #222; }
+
+.plain {
+  padding: 8px 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .6rem;
+  background: transparent;
+  color: #999;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: .15s;
+}
+.plain:hover { color: #1a1a1a; border-color: #1a1a1a; }
+
+.iter-big {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.8rem;
+  color: #8b5cf6;
+  line-height: 1;
+}
+.iter-sub { font-size: .48rem; color: #bbb; letter-spacing: .14em; }
+
+/* Sliders */
+.row { display: flex; align-items: center; gap: 10px; }
+.rl { font-size: .52rem; color: #999; width: 72px; flex-shrink: 0; }
+input[type=range] {
+  -webkit-appearance: none;
+  width: 120px; height: 2px;
+  background: #e0e0e0; border-radius: 1px; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%; background: #8b5cf6; cursor: pointer;
+}
+.rv { font-size: .52rem; color: #1a1a1a; width: 28px; text-align: right; }
+
+/* Scene buttons */
+.scenes { display: flex; gap: 8px; flex-wrap: wrap; }
+.sbtn {
+  width: 52px; height: 52px;
+  border-radius: 4px;
+  border: 2px solid #eee;
+  background: #fafafa;
+  cursor: pointer;
+  transition: border-color .1s;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem;
+}
+.sbtn:hover { border-color: #c4b5fd; }
+.sbtn.active { border-color: #8b5cf6; background: #f5f3ff; }
+
+/* About */
+.about {
+  font-size: .68rem;
+  color: #555;
+  line-height: 1.9;
+  max-width: 360px;
+}
+.about b { color: #1a1a1a; font-weight: 600; }
+
+/* Gaussian dots */
+.glist { display: flex; gap: 5px; flex-wrap: wrap; max-width: 160px; }
+.gdot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Gaussian <span>Splatting</span></div>
+  <div class="hstats">
+    <div class="hs"><span class="hs-l">Iter</span><span class="hs-v" id="hIter">0</span></div>
+    <div class="hs"><span class="hs-l">Gaussians</span><span class="hs-v" id="hN">0</span></div>
+    <div class="hs"><span class="hs-l">Loss</span><span class="hs-v" id="hLoss">—</span></div>
+    <div class="hs"><span class="hs-l">PSNR</span><span class="hs-v" id="hPsnr">—</span></div>
+  </div>
+</header>
+
+<div class="top">
+  <div class="pane">
+    <div class="pane-label"><b>Target</b> — ground truth</div>
+    <canvas class="view" id="cvTarget"></canvas>
+  </div>
+  <div class="pane">
+    <div class="pane-label"><b>Rendered</b> — gaussian fit</div>
+    <canvas class="view" id="cvRender"></canvas>
+  </div>
+  <div class="pane">
+    <div class="pane-label"><b>Error</b> — difference</div>
+    <canvas class="view" id="cvDiff"></canvas>
+  </div>
+</div>
+
+<div class="lossbar">
+  <span class="ll">LOSS</span>
+  <canvas id="lossCanvas"></canvas>
+  <span class="lv" id="lossVal">—</span>
+</div>
+
+<div class="bottom">
+
+  
+  <div class="panel">
+    <div class="panel-title">Optimization</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="play" id="playBtn" onclick="toggleRun()">▶ Start</button>
+      <button class="plain" onclick="doReset()">↺ Reset</button>
+    </div>
+    <div>
+      <div class="iter-big" id="iterBig">0</div>
+      <div class="iter-sub">ITERATIONS</div>
+    </div>
+  </div>
+
+  
+  <div class="panel">
+    <div class="panel-title">Parameters</div>
+    <div class="row">
+      <span class="rl">Gaussians</span>
+      <input type="range" id="slN" min="4" max="60" value="20" oninput="sync()">
+      <span class="rv" id="vN">20</span>
+    </div>
+    <div class="row">
+      <span class="rl">Learn rate</span>
+      <input type="range" id="slLR" min="1" max="40" value="12" oninput="sync()">
+      <span class="rv" id="vLR">.12</span>
+    </div>
+    <div class="row">
+      <span class="rl">Speed</span>
+      <input type="range" id="slSPF" min="1" max="6" value="2" oninput="sync()">
+      <span class="rv" id="vSPF">2×</span>
+    </div>
+  </div>
+
+  
+  <div class="panel">
+    <div class="panel-title">Scene</div>
+    <div class="scenes">
+      <div class="sbtn active" onclick="setScene(0,this)" title="Color Gradient">🌅</div>
+      <div class="sbtn" onclick="setScene(1,this)" title="Flower">🌸</div>
+      <div class="sbtn" onclick="setScene(2,this)" title="Primary Colors">🔴</div>
+      <div class="sbtn" onclick="setScene(3,this)" title="Rings">🎯</div>
+    </div>
+  </div>
+
+  
+  <div class="panel">
+    <div class="panel-title">What is this?</div>
+    <div class="about">
+      The computer starts with random colored blobs and tries to recreate
+      the image on the left. It adjusts each blob — moving it, resizing it,
+      changing its color — thousands of times until the result looks as
+      close as possible to the target.<br><br>
+      This is a simplified demo inspired by <b>3D Gaussian Splatting</b>
+      (Kerbl et al., SIGGRAPH 2023) to give an intuition for how the
+      method works — the real paper is much more complex.
+    </div>
+  </div>
+
+  
+  <div class="panel">
+    <div class="panel-title">Gaussians</div>
+    <div class="glist" id="glist"></div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+const W=64,H=64;
+const cvT=document.getElementById('cvTarget');
+const cvR=document.getElementById('cvRender');
+const cvD=document.getElementById('cvDiff');
+[cvT,cvR,cvD].forEach(c=>{c.width=W;c.height=H;});
+const ctxT=cvT.getContext('2d'),ctxR=cvR.getContext('2d'),ctxD=cvD.getContext('2d');
+
+const SCENES = [
+  
+  (nx,ny) => {
+    const r=nx;
+    const g=ny*.4*nx;
+    const b=(1-nx)*(1-ny*.5);
+    return [r,g,b];
+  },
+  
+  (nx,ny) => {
+    const cx=.5,cy=.5,pr=.30;
+    const cols=[[1,.15,.2],[1,.55,.05],[1,1,.05],[.1,.85,.2],[.1,.35,1],[.75,.1,.9]];
+    for(let i=0;i<6;i++){
+      const a=2*Math.PI*i/6;
+      if(Math.hypot(nx-cx-pr*Math.cos(a),ny-cy-pr*Math.sin(a))<.17) return cols[i];
+    }
+    if(Math.hypot(nx-cx,ny-cy)<.12) return [1,.95,.1];
+    return [0,0,0];
+  },
+  
+  (nx,ny) => {
+    if(Math.hypot(nx-.25,ny-.5)<.20) return [.95,.1,.08];
+    if(Math.hypot(nx-.5, ny-.5)<.20) return [1,.9,.05];
+    if(Math.hypot(nx-.75,ny-.5)<.20) return [.08,.15,.92];
+    return [0,0,0];
+  },
+  
+  (nx,ny) => {
+    const d=Math.hypot(nx-.5,ny-.5);
+    if(d<.08) return [1,.95,.1];
+    if(d<.15) return [0,0,0];
+    if(d<.24) return [.9,.2,.1];
+    if(d<.31) return [0,0,0];
+    if(d<.40) return [.1,.2,.9];
+    return [0,0,0];
+  },
+];
+
+let targetData=null;
+
+function makePixels(fn){
+  const d=new Float32Array(W*H*3);
+  for(let py=0;py<H;py++) for(let px=0;px<W;px++){
+    const [r,g,b]=fn(px/W,py/H);
+    const i=(py*W+px)*3; d[i]=r;d[i+1]=g;d[i+2]=b;
+  }
+  return d;
+}
+
+function setScene(i,btn){
+  document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  targetData=makePixels(SCENES[i]);
+  drawPx(ctxT,targetData);
+  doReset();
+}
+
+function drawPx(ctx,data){
+  const id=ctx.createImageData(W,H);
+  for(let i=0;i<W*H;i++){
+    id.data[i*4]  =Math.min(255,data[i*3]*255)|0;
+    id.data[i*4+1]=Math.min(255,data[i*3+1]*255)|0;
+    id.data[i*4+2]=Math.min(255,data[i*3+2]*255)|0;
+    id.data[i*4+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+}
+
+function drawDiff(rendered,target){
+  const id=ctxD.createImageData(W,H);
+  for(let i=0;i<W*H;i++){
+    const e=(Math.abs(rendered[i*3]-target[i*3])+
+             Math.abs(rendered[i*3+1]-target[i*3+1])+
+             Math.abs(rendered[i*3+2]-target[i*3+2]))/3;
+    const v=Math.min(255,e*5*255)|0;
+    id.data[i*4]=v; id.data[i*4+1]=Math.min(255,v*.3)|0;
+    id.data[i*4+2]=0; id.data[i*4+3]=255;
+  }
+  ctxD.putImageData(id,0,0);
+}
+
+let gaussians=[];
+
+function sampleTarget(){
+  const px=Math.floor(Math.random()*W),py=Math.floor(Math.random()*H);
+  const i=(py*W+px)*3;
+  return {r:targetData[i],g:targetData[i+1],b:targetData[i+2],x:(px+.5)/W,y:(py+.5)/H};
+}
+
+function initGaussians(n){
+  gaussians=[];
+  for(let i=0;i<n;i++){
+    const s=sampleTarget();
+    const g={
+      x:Math.max(.02,Math.min(.98,s.x+(Math.random()-.5)*.1)),
+      y:Math.max(.02,Math.min(.98,s.y+(Math.random()-.5)*.1)),
+      sx:.05+Math.random()*.1, sy:.05+Math.random()*.1,
+      rot:Math.random()*Math.PI,
+      alpha:.6+Math.random()*.35,
+      r:s.r, g:s.g, b:s.b,
+    };
+    ['x','y','sx','sy','rot','alpha','r','g','b'].forEach(p=>{g['m_'+p]=0;g['v_'+p]=0;});
+    gaussians.push(g);
+  }
+}
+
+function render(gs){
+  const buf=new Float32Array(W*H*3);
+  const T=new Float32Array(W*H).fill(1);
+  const order=[...gs.keys()].sort((a,b)=>gs[b].alpha-gs[a].alpha);
+  for(const gi of order){
+    const g=gs[gi];
+    const cos=Math.cos(g.rot),sin=Math.sin(g.rot);
+    const sx2=g.sx*g.sx,sy2=g.sy*g.sy;
+    for(let py=0;py<H;py++) for(let px=0;px<W;px++){
+      const dx=px/W-g.x,dy=py/H-g.y;
+      const lx=cos*dx+sin*dy,ly=-sin*dx+cos*dy;
+      const e=-(lx*lx/(2*sx2)+ly*ly/(2*sy2));
+      if(e<-9) continue;
+      const Gv=Math.exp(e),contrib=g.alpha*Gv;
+      const idx=py*W+px,t=T[idx];
+      buf[idx*3]  +=t*contrib*g.r;
+      buf[idx*3+1]+=t*contrib*g.g;
+      buf[idx*3+2]+=t*contrib*g.b;
+      T[idx]=t*(1-contrib);
+    }
+  }
+  return buf;
+}
+
+function l1(a,b){let s=0;for(let i=0;i<a.length;i++)s+=Math.abs(a[i]-b[i]);return s/(a.length/3);}
+function psnr(l){return l>0?10*Math.log10(1/l):99;}
+
+function computeGrads(gs,rendered){
+  const loss0=l1(rendered,targetData);
+  for(const g of gs){
+    const cos=Math.cos(g.rot),sin=Math.sin(g.rot),sx2=g.sx*g.sx,sy2=g.sy*g.sy;
+    let gr=0,gg=0,gb=0,ga=0;
+    for(let py=0;py<H;py++) for(let px=0;px<W;px++){
+      const dx=px/W-g.x,dy=py/H-g.y;
+      const lx=cos*dx+sin*dy,ly=-sin*dx+cos*dy;
+      const e=-(lx*lx/(2*sx2)+ly*ly/(2*sy2));
+      if(e<-9) continue;
+      const Gv=Math.exp(e),idx=py*W+px;
+      const er=rendered[idx*3]>targetData[idx*3]?1:-1;
+      const eg=rendered[idx*3+1]>targetData[idx*3+1]?1:-1;
+      const eb=rendered[idx*3+2]>targetData[idx*3+2]?1:-1;
+      const w=Gv*g.alpha/(W*H);
+      gr+=er*w; gg+=eg*w; gb+=eb*w;
+      ga+=(er*g.r+eg*g.g+eb*g.b)*Gv/(W*H);
+    }
+    g._gr=gr;g._gg=gg;g._gb=gb;g._ga=ga;
+    const eps={x:.01,y:.01,sx:.005,sy:.005,rot:.08};
+    for(const p of ['x','y','sx','sy','rot']){
+      const orig=g[p]; g[p]=orig+eps[p];
+      g['_g'+p]=(l1(render(gs),targetData)-loss0)/eps[p];
+      g[p]=orig;
+    }
+  }
+}
+
+let adamT=0;
+function adam(g,p,grad,lr){
+  const mk='m_'+p,vk='v_'+p;
+  g[mk]=.9*g[mk]+.1*grad; g[vk]=.999*g[vk]+.001*grad*grad;
+  const mh=g[mk]/(1-.9**adamT),vh=g[vk]/(1-.999**adamT);
+  g[p]-=lr*mh/(Math.sqrt(vh)+1e-8);
+}
+
+function optimStep(){
+  adamT++;
+  const lr=+document.getElementById('slLR').value/100;
+  const rendered=render(gaussians);
+  computeGrads(gaussians,rendered);
+  for(const g of gaussians){
+    adam(g,'r',g._gr,lr*1.5); adam(g,'g',g._gg,lr*1.5); adam(g,'b',g._gb,lr*1.5);
+    adam(g,'alpha',g._ga,lr);
+    adam(g,'x',g._gx,lr*.5); adam(g,'y',g._gy,lr*.5);
+    adam(g,'sx',g._gsx,lr*.3); adam(g,'sy',g._gsy,lr*.3);
+    adam(g,'rot',g._grot,lr*.2);
+    g.x=Math.max(.01,Math.min(.99,g.x)); g.y=Math.max(.01,Math.min(.99,g.y));
+    g.sx=Math.max(.005,Math.min(.45,g.sx)); g.sy=Math.max(.005,Math.min(.45,g.sy));
+    g.alpha=Math.max(.01,Math.min(.98,g.alpha));
+    g.r=Math.max(0,Math.min(1,g.r)); g.g=Math.max(0,Math.min(1,g.g)); g.b=Math.max(0,Math.min(1,g.b));
+  }
+}
+
+let gradAccum=[];
+function densify(){
+  const MAX=Math.min(100,+document.getElementById('slN').value*4);
+  const newGs=[];
+  for(let i=0;i<gaussians.length;i++){
+    const g=gaussians[i];
+    if(g.alpha<.04) continue;
+    newGs.push(g);
+    if(newGs.length>=MAX) continue;
+    const size=(g.sx+g.sy)/2,gm=gradAccum[i]||0;
+    if(gm>.003){
+      if(size<.07){
+        const c={...g,x:g.x+(Math.random()-.5)*.02,y:g.y+(Math.random()-.5)*.02};
+        ['x','y','sx','sy','rot','alpha','r','g','b'].forEach(p=>{c['m_'+p]=0;c['v_'+p]=0;});
+        newGs.push(c);
+      }else{
+        const s={...g,sx:g.sx/1.6,sy:g.sy/1.6,
+          x:g.x+(Math.random()-.5)*g.sx*.6,y:g.y+(Math.random()-.5)*g.sy*.6};
+        ['x','y','sx','sy','rot','alpha','r','g','b'].forEach(p=>{s['m_'+p]=0;s['v_'+p]=0;});
+        g.sx/=1.6; g.sy/=1.6; newGs.push(s);
+      }
+    }
+  }
+  gaussians=newGs; gradAccum=new Array(gaussians.length).fill(0);
+}
+
+let running=false,iteration=0,rafId=null;
+const lossHist=[];
+
+function loop(){
+  if(!running) return;
+  const spf=+document.getElementById('slSPF').value;
+  for(let s=0;s<spf;s++){
+    optimStep(); iteration++;
+    gaussians.forEach((g,i)=>{gradAccum[i]=(gradAccum[i]||0)+Math.abs(g._gx||0)+Math.abs(g._gy||0);});
+    if(iteration>150&&iteration%100===0) densify();
+    if(iteration%600===0) gaussians.forEach(g=>{g.alpha=.05;});
+  }
+  const buf=render(gaussians);
+  const loss=l1(buf,targetData);
+  if(isFinite(loss)&&loss<100){lossHist.push(loss);if(lossHist.length>400)lossHist.shift();}
+  drawPx(ctxR,buf); drawDiff(buf,targetData); updateUI(loss);
+  rafId=requestAnimationFrame(loop);
+}
+
+function toggleRun(){
+  running=!running;
+  const btn=document.getElementById('playBtn');
+  if(running){btn.textContent='⏸ Pause';btn.classList.add('running');loop();}
+  else{btn.textContent='▶ Resume';btn.classList.remove('running');if(rafId)cancelAnimationFrame(rafId);}
+}
+
+function doReset(){
+  running=false; if(rafId)cancelAnimationFrame(rafId);
+  iteration=0; adamT=0; lossHist.length=0; gradAccum=[];
+  const btn=document.getElementById('playBtn');
+  btn.textContent='▶ Start'; btn.classList.remove('running');
+  initGaussians(+document.getElementById('slN').value);
+  gradAccum=new Array(gaussians.length).fill(0);
+  const buf=render(gaussians);
+  drawPx(ctxT,targetData); drawPx(ctxR,buf); drawDiff(buf,targetData); updateUI(l1(buf,targetData));
+}
+
+function updateUI(loss){
+  document.getElementById('hIter').textContent=iteration;
+  document.getElementById('hN').textContent=gaussians.length;
+  document.getElementById('iterBig').textContent=iteration;
+  if(isFinite(loss)&&loss<100){
+    document.getElementById('hLoss').textContent=loss.toFixed(4);
+    document.getElementById('hPsnr').textContent=psnr(loss).toFixed(1)+'dB';
+    document.getElementById('lossVal').textContent=loss.toFixed(4);
+  }
+  drawLoss(); updateGList();
+}
+
+function drawLoss(){
+  const lc=document.getElementById('lossCanvas');
+  lc.width=Math.max(100,lc.parentElement.clientWidth-120); lc.height=28;
+  const ctx=lc.getContext('2d'); ctx.clearRect(0,0,lc.width,lc.height);
+  if(lossHist.length<2) return;
+  const maxL=lossHist[0],minL=Math.min(...lossHist),range=Math.max(maxL-minL,.0001),lw=lc.width;
+  ctx.beginPath();
+  lossHist.forEach((l,i)=>{const x=(i/(lossHist.length-1))*lw,y=24-((l-minL)/range)*20;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+  ctx.lineTo(lw,28);ctx.lineTo(0,28);ctx.closePath();ctx.fillStyle='rgba(139,92,246,.07)';ctx.fill();
+  ctx.beginPath();
+  lossHist.forEach((l,i)=>{const x=(i/(lossHist.length-1))*lw,y=24-((l-minL)/range)*20;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+  ctx.strokeStyle='#8b5cf6';ctx.lineWidth=1.5;ctx.stroke();
+}
+
+function updateGList(){
+  const list=document.getElementById('glist'); list.innerHTML='';
+  [...gaussians].sort((a,b)=>b.alpha-a.alpha).slice(0,20).forEach(g=>{
+    const el=document.createElement('div');
+    el.className='gdot';
+    el.style.background=`rgb(${(g.r*255)|0},${(g.g*255)|0},${(g.b*255)|0})`;
+    list.appendChild(el);
+  });
+}
+
+function sync(){
+  document.getElementById('vN').textContent=document.getElementById('slN').value;
+  document.getElementById('vLR').textContent='.'+document.getElementById('slLR').value;
+  document.getElementById('vSPF').textContent=document.getElementById('slSPF').value+'×';
+}
+
+sync();
+setScene(0, document.querySelector('.sbtn.active'));
+</script>
+</body>
+</html>
